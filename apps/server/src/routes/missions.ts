@@ -1,6 +1,6 @@
 import type { AttemptResponse, EvaluateResponse, MissionLeaderboardRow, MissionSummary } from "@cpt/shared";
 import type { FastifyPluginAsync } from "fastify";
-import { InvalidCommandLog, findMission, parseCommandLog, replay, toSummary } from "../services/missions";
+import { InvalidCommandLog, findMission, parseCommandLog, replay, solveTimeMs, toSummary } from "../services/missions";
 
 interface CommandsBody {
   commands?: unknown;
@@ -66,9 +66,7 @@ export const missionRoutes: FastifyPluginAsync = async (app) => {
       const result = replay(mission, commands);
       if (!result.solved) return reply.code(422).send({ error: "Mission non résolue.", results: result.results });
 
-      const reported = typeof req.body?.durationMs === "number" ? req.body.durationMs : 0;
-      const lastCommandAt = commands.at(-1)?.t ?? 0;
-      const timeMs = Math.round(Math.min(Math.max(reported, lastCommandAt), mission.detail.timeLimit * 1000));
+      const timeMs = solveTimeMs(req.body?.durationMs, commands, mission.detail.timeLimit);
       const userId = req.user.sub;
 
       const previousBest = await app.prisma.matchParticipant.findFirst({

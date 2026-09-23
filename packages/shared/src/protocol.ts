@@ -51,6 +51,8 @@ export interface ServerToClientEvents {
   "match:found": (match: MatchFound) => void;
   "match:progress": (progress: MatchProgress) => void;
   "match:end": (end: MatchEnd) => void;
+  /** The match could not be saved: it is cancelled with no ELO change. */
+  "match:aborted": (payload: { matchId: string; message: string }) => void;
   "error:message": (message: string) => void;
 }
 

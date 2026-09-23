@@ -60,7 +60,7 @@ export class RankedService {
       }
     });
     this.io.on("connection", (socket) => this.onConnection(socket));
-    this.ticker = setInterval(() => void this.tick(), 1000);
+    this.ticker = setInterval(() => this.run(this.tick(), "tick"), 1000);
   }
 
   stop(): void {
@@ -78,7 +78,7 @@ export class RankedService {
     const active = this.activeRoom(userId);
     if (active) this.sendMatchFound(active, userId, true);
 
-    socket.on("queue:join", () => void this.joinQueue(socket));
+    socket.on("queue:join", () => this.run(this.joinQueue(socket), "queue:join"));
     socket.on("queue:leave", () => {
       this.queue.delete(userId);
       socket.emit("queue:status", this.queueStatus(userId));
@@ -88,15 +88,15 @@ export class RankedService {
       if (!room || !room.player(userId)) return;
       if (!room.applyCommand(userId, payload.deviceId, payload.line, this.now())) return;
       this.emitProgress(room);
-      if (room.outcome) void this.finish(room);
+      if (room.outcome) this.end(room);
     });
     socket.on("match:forfeit", (payload) => {
       const room = this.rooms.get(payload?.matchId);
       if (!room || !room.player(userId)) return;
       room.forfeit(userId, "forfeit");
-      void this.finish(room);
+      this.end(room);
     });
-    socket.on("disconnect", () => void this.onDisconnect(userId));
+    socket.on("disconnect", () => this.run(this.onDisconnect(userId), "disconnect"));
   }
 
   private async onDisconnect(userId: string): Promise<void> {
@@ -108,7 +108,7 @@ export class RankedService {
     this.setTimer(`dc:${userId}`, RECONNECT_GRACE_MS, () => {
       if (room.outcome) return;
       room.forfeit(userId, "disconnect");
-      void this.finish(room);
+      this.end(room);
     });
   }
 
@@ -182,7 +182,7 @@ export class RankedService {
     for (const e of [a, b]) this.roomByUser.set(e.userId, room.id);
     this.setTimer(`room:${room.id}`, room.endsAt - startedAt, () => {
       room.timeout();
-      void this.finish(room);
+      this.end(room);
     });
     for (const e of [a, b]) this.sendMatchFound(room, e.userId, false);
     this.emitProgress(room);
@@ -219,6 +219,33 @@ export class RankedService {
     const id = this.roomByUser.get(userId);
     const room = id ? this.rooms.get(id) : undefined;
     return room && !room.outcome ? room : undefined;
+  }
+
+  /** Fire-and-forget an async handler: a rejection must never crash the process. */
+  private run(task: Promise<void>, what: string): void {
+    task.catch((err: unknown) => this.app.log.error(err, `ranked ${what} failed`));
+  }
+
+  /**
+   * Finish a match without letting a persistence failure escape. If the
+   * results cannot be saved, the match is abandoned: no ELO change, players
+   * are released and told why.
+   */
+  private end(room: MatchRoom): void {
+    this.finish(room).catch(async (err: unknown) => {
+      this.app.log.error(err, "failed to finish match");
+      for (const p of room.players) {
+        this.roomByUser.delete(p.entry.userId);
+        this.clearTimer(`dc:${p.entry.userId}`);
+        this.io.to(userRoom(p.entry.userId)).emit("match:aborted", {
+          matchId: room.id,
+          message: "Le match n'a pas pu être enregistré : il est annulé, sans effet sur ton ELO.",
+        });
+      }
+      await this.prisma.match
+        .update({ where: { id: room.id }, data: { status: "ABORTED", endedAt: new Date(this.now()) } })
+        .catch((e: unknown) => this.app.log.error(e, "failed to mark match aborted"));
+    });
   }
 
   private async finish(room: MatchRoom): Promise<void> {

@@ -65,6 +65,10 @@ export function RankedPage() {
           : prev,
       );
     });
+    s.on("match:aborted", ({ matchId, message }) => {
+      setError(message);
+      setState((prev) => (prev.phase === "match" && prev.match.matchId === matchId ? { phase: "idle" } : prev));
+    });
     return () => {
       s.disconnect();
       socket.current = null;

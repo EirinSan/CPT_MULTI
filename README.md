@@ -38,6 +38,7 @@ Stack complète (compte, missions, ranked) — il faut un PostgreSQL :
 ```bash
 cp packages/db/.env.example packages/db/.env       # DATABASE_URL
 cp apps/server/.env.example apps/server/.env       # DATABASE_URL + JWT_SECRET
+openssl rand -hex 32                               # à coller dans JWT_SECRET (32 caractères min.)
 pnpm db:migrate                                    # crée les tables
 pnpm --filter @cpt/server seed                     # charge les missions
 pnpm --filter @cpt/server dev                      # API + Socket.io sur :3001

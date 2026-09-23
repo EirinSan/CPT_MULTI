@@ -67,8 +67,21 @@ export function parseCommandLog(input: unknown, topology: Topology): CommandEntr
     const c = raw as Partial<CommandEntry>;
     if (typeof c?.deviceId !== "string" || !consoles.has(c.deviceId)) throw new InvalidCommandLog("bad deviceId");
     if (typeof c.line !== "string" || c.line.length > config.maxLineLength) throw new InvalidCommandLog("bad line");
-    return { deviceId: c.deviceId, line: c.line, t: typeof c.t === "number" ? c.t : 0 };
+    return { deviceId: c.deviceId, line: c.line, t: nonNegative(c.t) };
   });
+}
+
+function nonNegative(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+/**
+ * Solo solve time as declared by the client, never below the last command's
+ * timestamp, never negative and capped at the mission's time limit.
+ */
+export function solveTimeMs(reported: unknown, commands: CommandEntry[], timeLimitSec: number): number {
+  const lastCommandAt = commands.at(-1)?.t ?? 0;
+  return Math.round(Math.min(Math.max(nonNegative(reported), lastCommandAt), timeLimitSec * 1000));
 }
 
 export interface ReplayResult {
