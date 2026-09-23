@@ -1,20 +1,30 @@
-import { LineDiscipline } from "@cpt/cli-engine";
+import { LineDiscipline, type CliSession } from "@cpt/cli-engine";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import { useEffect, useRef } from "react";
-import { registerConsole, useLab, type LabDevice } from "../store/lab";
 
 interface Props {
-  device: LabDevice;
+  session: CliSession;
+  /** Shown in the console banner. */
+  banner: string;
   active: boolean;
+  /** Read-only console (match over). */
+  locked?: boolean;
+  /** Route execution elsewhere (a Lab), defaults to session.execute. */
+  execute?: (line: string) => string[];
+  onExecute?: (line: string, output: string[]) => void;
+  /** Receives the line discipline so async syslog can be printed. */
+  onReady?: (ld: LineDiscipline) => () => void;
 }
 
 /** xterm.js console bound to one device's CLI session. */
-export function CliTerminal({ device, active }: Props) {
+export function CliTerminal({ session, banner, active, locked = false, execute, onExecute, onReady }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const fit = useRef<FitAddon | null>(null);
   const term = useRef<Terminal | null>(null);
-  const bump = useLab((s) => s.bump);
+  // Latest callbacks, so the terminal is created once per session.
+  const latest = useRef({ execute, onExecute, onReady });
+  latest.current = { execute, onExecute, onReady };
 
   useEffect(() => {
     const t = new Terminal({
@@ -35,27 +45,35 @@ export function CliTerminal({ device, active }: Props) {
     t.open(host.current!);
     f.fit();
 
-    const ld = new LineDiscipline(device.session, {
+    const ld = new LineDiscipline(session, {
       write: (data) => t.write(data),
-      onExecute: () => bump(),
+      execute: (line) => (latest.current.execute ? latest.current.execute(line) : session.execute(line)),
+      onExecute: (line, output) => latest.current.onExecute?.(line, output),
     });
     const input = t.onData((data) => ld.input(data));
-    const unregister = registerConsole(device.id, ld);
-    t.writeln(`\x1b[2m${device.label} ${device.session.device.model} — console 9600 8N1\x1b[0m`);
+    const release = latest.current.onReady?.(ld);
+    t.writeln(`\x1b[2m${banner}\x1b[0m`);
     t.write("\r\nPress RETURN to get started.\r\n");
     ld.start();
 
     term.current = t;
     fit.current = f;
-    const onResize = () => f.fit();
-    window.addEventListener("resize", onResize);
+    const observer = new ResizeObserver(() => {
+      if (host.current?.offsetParent) f.fit();
+    });
+    observer.observe(host.current!);
     return () => {
-      window.removeEventListener("resize", onResize);
+      observer.disconnect();
       input.dispose();
-      unregister();
+      release?.();
       t.dispose();
     };
-  }, [device, bump]);
+    // `banner` is cosmetic; recreate only for a new session.
+  }, [session]);
+
+  useEffect(() => {
+    if (term.current) term.current.options.disableStdin = locked;
+  }, [locked]);
 
   useEffect(() => {
     if (!active) return;

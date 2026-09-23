@@ -72,11 +72,13 @@ enum LeaderboardScope {
 // ---------------------------------------------------------------------------
 
 model User {
-  id        String   @id @default(cuid())
-  username  String   @unique
-  email     String?  @unique
-  discordId String?  @unique
-  avatarUrl String?
+  id           String  @id @default(cuid())
+  username     String  @unique
+  email        String? @unique
+  discordId    String? @unique
+  avatarUrl    String?
+  /// scrypt hash ("scrypt$<salt>$<hash>"); null for Discord-only accounts.
+  passwordHash String?
 
   // Rating. `elo` is the displayed rating; deviation/volatility are kept so
   // we can move to Glicko-2 without a migration.
@@ -126,6 +128,9 @@ model Challenge {
   id          String            @id @default(cuid())
   slug        String            @unique
   title       String
+  /// One-line summary for lists.
+  summary     String            @default("")
+  /// Scenario shown to the player before starting.
   description String
   difficulty  Difficulty
   category    ChallengeCategory
@@ -138,7 +143,7 @@ model Challenge {
   targetStateAssertions Json
 
   /// Seconds allowed to solve the challenge.
-  timeLimit Int
+  timeLimit  Int
   /// Reference solve time used for speedrun scoring.
   parTimeSec Int?
 
@@ -251,9 +256,9 @@ model LeaderboardEntry {
   userId        String
   user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  rank  Int
+  rank       Int
   /// ELO for rating boards, points for CTF boards.
-  score Int
+  score      Int
   /// Best solve time for CHALLENGE boards.
   bestTimeMs Int?
   wins       Int  @default(0)

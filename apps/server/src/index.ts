@@ -1,17 +1,20 @@
-import Fastify from "fastify";
 import { createPrismaClient } from "@cpt/db";
-import { challengeRoutes } from "./routes/challenges";
-import { leaderboardRoutes } from "./routes/leaderboards";
+import { Server } from "socket.io";
+import { buildApp } from "./app";
+import { config } from "./config";
+import { RankedService, type RankedIO } from "./realtime/ranked";
 
-const app = Fastify({ logger: true });
 const prisma = createPrismaClient();
+const app = await buildApp(prisma);
 
-app.decorate("prisma", prisma);
-app.addHook("onClose", async () => prisma.$disconnect());
+const io: RankedIO = new Server(app.server, { path: "/socket.io" });
+const ranked = new RankedService(app, io);
 
-app.get("/health", async () => ({ ok: true }));
-await app.register(challengeRoutes, { prefix: "/challenges" });
-await app.register(leaderboardRoutes, { prefix: "/leaderboards" });
+app.addHook("onClose", async () => {
+  ranked.stop();
+  await io.close();
+  await prisma.$disconnect();
+});
 
-const port = Number(process.env.PORT ?? 3001);
-await app.listen({ port, host: "0.0.0.0" });
+await app.listen({ port: config.port, host: "0.0.0.0" });
+ranked.start();

@@ -16,13 +16,16 @@ export const RANK_TIERS = [
 
 export type RankTier = (typeof RANK_TIERS)[number];
 
-/** Lower bound (inclusive) of each tier. */
+/**
+ * Lower bound (inclusive) of each tier. Anything below the Bronze floor is
+ * still Bronze III. New players (1000) start in Bronze II.
+ */
 export const TIER_FLOORS: Record<RankTier, number> = {
-  BRONZE: 0,
-  SILVER: 1000,
-  GOLD: 1200,
-  PLATINUM: 1400,
-  DIAMOND: 1600,
+  BRONZE: 800,
+  SILVER: 1150,
+  GOLD: 1300,
+  PLATINUM: 1450,
+  DIAMOND: 1650,
   MASTER: 1850,
   CCIE: 2100,
 };
@@ -75,6 +78,15 @@ export function kFactor(rating: number, gamesPlayed: number): number {
 export interface EloUpdate {
   winnerDelta: number;
   loserDelta: number;
+}
+
+/** Rating delta for one player given their score (1 win, 0.5 draw, 0 loss). */
+export function eloDelta(
+  player: { rating: number; gamesPlayed: number },
+  opponent: { rating: number },
+  score: 0 | 0.5 | 1,
+): number {
+  return Math.round(kFactor(player.rating, player.gamesPlayed) * (score - expectedScore(player.rating, opponent.rating)));
 }
 
 /** Returns rating deltas for a decisive 1v1 result. */
