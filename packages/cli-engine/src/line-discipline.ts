@@ -12,6 +12,8 @@ const ESCAPE_SEQUENCE = /^\x1b(?:\[[0-9;]*[A-Za-z~]|O[A-Za-z])/;
 
 export interface LineDisciplineOptions {
   write: (data: string) => void;
+  /** Override command execution (e.g. route through a Lab). */
+  execute?: (line: string) => string[];
   /** Called after each executed command (mode may have changed). */
   onExecute?: (line: string, output: string[]) => void;
 }
@@ -147,7 +149,7 @@ export class LineDiscipline {
   private enter(): void {
     const line = this.buffer;
     this.opts.write("\r\n");
-    const output = this.session.execute(line);
+    const output = this.opts.execute ? this.opts.execute(line) : this.session.execute(line);
     for (const l of output) this.opts.write(`${l}\r\n`);
     this.opts.onExecute?.(line, output);
     this.buffer = "";

@@ -8,3 +8,8 @@ export type { CommandContext, CliSessionOptions } from "./session";
 export { LineDiscipline } from "./line-discipline";
 export type { LineDisciplineOptions } from "./line-discipline";
 export * as show from "./show";
+export { Lab, findInterface, isIosKind } from "./lab";
+export type { LabNode, LabExecResult } from "./lab";
+export { evaluateAssertions } from "./assertions";
+export { computeRib } from "./rib";
+export type { RibEntry } from "./rib";

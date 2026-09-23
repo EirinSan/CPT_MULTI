@@ -4,8 +4,9 @@ Plateforme web de simulation réseau **interactive et compétitive** : éditeur
 de topologies, CLI type Cisco IOS, défis chronométrés classés (ELO) et
 intégration Discord Rich Presence.
 
-> État actuel : **fondations**. Monorepo, modèle de données, prototype de CLI
-> IOS jouable dans le navigateur et architecture du moteur de simulation.
+> État actuel : comptes joueurs, **missions solo chronométrées**, **ranked 1v1
+> en temps réel** avec ELO, classements et profil, sur une CLI IOS jouable dans
+> le navigateur. Le moteur de paquets (ping, ARP…) est la prochaine étape.
 
 ## Structure du monorepo
 
@@ -13,9 +14,10 @@ Monorepo **pnpm workspaces + Turborepo**, TypeScript partout.
 
 | Paquet | Rôle |
 |---|---|
-| `apps/web` | Client React 19 + Vite + Tailwind 4 + Zustand + xterm.js (prototype de console) |
-| `apps/server` | API Fastify 5 (challenges, leaderboards) — Socket.io à venir pour les matchs |
-| `packages/cli-engine` | Machine à états CLI IOS : grammaire en trie, abréviations, `?`, Tab, historique, commandes `show`/config |
+| `apps/web` | Client React 19 + React Router + Tailwind 4 + Zustand + xterm.js : menu, compte, missions, ranked, classements, lab libre |
+| `apps/server` | API Fastify 5 (auth JWT, profil, missions, classements) + Socket.io (matchmaking et matchs ranked) |
+| `packages/cli-engine` | Machine à états CLI IOS, `Lab` multi-équipements (état des câbles), table de routage, évaluateur d'assertions |
+| `packages/missions` | Catalogue des missions avec objectifs et solutions de référence (côté serveur uniquement) |
 | `packages/shared` | Types partagés : topologie, assertions de validation, ELO / rangs, payload Discord |
 | `packages/db` | Schéma Prisma 7 (PostgreSQL) + client |
 | `docs/architecture` | [Moteur de simulation à événements discrets](docs/architecture/simulation-engine.md) |
@@ -31,13 +33,40 @@ pnpm test                         # tests unitaires (vitest)
 pnpm typecheck
 ```
 
-Base de données (optionnel pour le prototype CLI) :
+Stack complète (compte, missions, ranked) — il faut un PostgreSQL :
 
 ```bash
-cp packages/db/.env.example packages/db/.env   # renseigner DATABASE_URL
-pnpm db:migrate
-pnpm --filter @cpt/server dev                  # http://localhost:3001
+cp packages/db/.env.example packages/db/.env       # DATABASE_URL
+cp apps/server/.env.example apps/server/.env       # DATABASE_URL + JWT_SECRET
+pnpm db:migrate                                    # crée les tables
+pnpm --filter @cpt/server seed                     # charge les missions
+pnpm --filter @cpt/server dev                      # API + Socket.io sur :3001
+pnpm --filter @cpt/web dev                         # :5173 (proxy /api et /socket.io)
 ```
+
+Pour tester le ranked seul, ouvre deux fenêtres (dont une en navigation
+privée) avec deux comptes différents et lance la recherche dans les deux.
+
+## Menu et modes de jeu
+
+| Page | Contenu |
+|---|---|
+| **Accueil** | Rang actuel, progression vers le rang suivant, prochaine mission à faire |
+| **Ranked 1v1** | File de matchmaking (l'écart d'ELO accepté s'élargit avec l'attente) → même mission pour les deux joueurs → progression de l'adversaire en direct → résultat et variation d'ELO |
+| **Missions** | 6 scénarios (switching, routage, inter-VLAN, dépannage) : briefing, chrono, objectifs cochés en direct, record personnel, top 10 |
+| **Classement** | Top ELO ranked et meilleurs temps par mission |
+| **Profil** | ELO, record d'ELO, stats (V/D/N, séries, missions réussies), historique des parties |
+| **Lab libre** | Switch L2, switch L3 et routeur sans objectif |
+
+**Validation côté serveur** : les objectifs visibles ne sont que des libellés.
+Les assertions exactes restent sur le serveur, qui rejoue chaque commande sur
+son propre `Lab` pour décider si un objectif est atteint. En ranked, c'est le
+serveur qui mesure le temps et désigne le vainqueur.
+
+**Rangs** : Bronze (< 1150) → Silver → Gold (1300) → Platinum (1450) →
+Diamond (1650) → Master (1850) → CCIE (2100), en divisions III/II/I jusqu'à
+Diamond. Nouveau compte : 1000 ELO, Bronze II. K = 40 pendant les 20 premiers
+matchs, puis 24 (16 à partir de Master).
 
 ## Prototype CLI
 

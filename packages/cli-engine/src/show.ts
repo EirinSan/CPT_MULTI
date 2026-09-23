@@ -1,6 +1,6 @@
 /** Formatters for `show` commands, matching IOS column layouts. */
 import { interfaceStatus, isVirtual, shortInterfaceName } from "./device";
-import { maskToPrefix, networkOf } from "./net";
+import { computeRib } from "./rib";
 import type { DeviceState } from "./types";
 
 export function showIpInterfaceBrief(dev: DeviceState): string[] {
@@ -53,32 +53,15 @@ export function showIpRoute(dev: DeviceState): string[] {
     "       * - candidate default, U - per-user static route",
     "",
   ];
-  const routes: Array<{ code: string; prefix: string; text: string }> = [];
-  for (const i of dev.interfaces) {
-    if (!i.ipv4 || interfaceStatus(dev, i).protocol !== "up") continue;
-    const len = maskToPrefix(i.ipv4.mask)!;
-    routes.push({
-      code: "C",
-      prefix: `${networkOf(i.ipv4.address, i.ipv4.mask)}/${len}`,
-      text: `is directly connected, ${i.name}`,
-    });
-    if (len < 32) {
-      routes.push({ code: "L", prefix: `${i.ipv4.address}/32`, text: `is directly connected, ${i.name}` });
-    }
-  }
-  let defaultGw: string | null = null;
-  for (const r of dev.staticRoutes) {
-    const len = maskToPrefix(r.mask)!;
-    if (len === 0) defaultGw = r.nextHop;
-    routes.push({
-      code: len === 0 ? "S*" : "S",
-      prefix: `${r.network}/${len}`,
-      text: `[1/0] via ${r.nextHop}`,
-    });
-  }
-  out.push(defaultGw ? `Gateway of last resort is ${defaultGw} to network 0.0.0.0` : "Gateway of last resort is not set");
+  const rib = computeRib(dev);
+  const def = rib.find((r) => r.code === "S" && r.prefixLength === 0);
+  out.push(def ? `Gateway of last resort is ${def.nextHop} to network 0.0.0.0` : "Gateway of last resort is not set");
   out.push("");
-  for (const r of routes) out.push(`${r.code.padEnd(9)}${r.prefix} ${r.text}`);
+  for (const r of rib) {
+    const code = r.code === "S" && r.prefixLength === 0 ? "S*" : r.code;
+    const text = r.code === "S" ? `[1/0] via ${r.nextHop}` : `is directly connected, ${r.outInterface}`;
+    out.push(`${code.padEnd(9)}${r.network}/${r.prefixLength} ${text}`);
+  }
   return out;
 }
 

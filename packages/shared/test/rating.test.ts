@@ -9,13 +9,16 @@ describe("rating", () => {
 
   it("maps ratings to tiers", () => {
     expect(tierForRating(0)).toBe("BRONZE");
-    expect(tierForRating(1250)).toBe("GOLD");
+    expect(tierForRating(1000)).toBe("BRONZE");
+    expect(tierForRating(1350)).toBe("GOLD");
     expect(tierForRating(2500)).toBe("CCIE");
   });
 
   it("computes divisions", () => {
-    expect(rankInfo(1200).label).toBe("Gold III");
-    expect(rankInfo(1399).label).toBe("Gold I");
+    expect(rankInfo(500).label).toBe("Bronze III");
+    expect(rankInfo(1000).label).toBe("Bronze II");
+    expect(rankInfo(1300).label).toBe("Gold III");
+    expect(rankInfo(1449).label).toBe("Gold I");
     expect(rankInfo(1900).label).toBe("Master");
   });
 
