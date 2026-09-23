@@ -8,6 +8,7 @@ const NAV = [
   { to: "/missions", label: "Missions", icon: "◎" },
   { to: "/leaderboard", label: "Classement", icon: "▤" },
   { to: "/lab", label: "Lab libre", icon: ">_" },
+  { to: "/commandes", label: "Commandes", icon: "?" },
 ];
 
 function navClass({ isActive }: { isActive: boolean }) {

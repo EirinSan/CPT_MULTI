@@ -228,6 +228,6 @@ describe("running-config", () => {
     expect(cfg.slice(i, i + 4)).toContain(" shutdown");
     expect(s.execute("show startup-config")).toEqual(["startup-config is not present"]);
     expect(s.execute("write memory")).toEqual(["Building configuration...", "[OK]"]);
-    expect(s.execute("show startup-config")[1]).toBe("Current configuration:");
+    expect(s.execute("show startup-config")[1]).toMatch(/^Current configuration : \d+ bytes$/);
   });
 });

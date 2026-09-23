@@ -2,6 +2,7 @@ import { Route, Routes } from "react-router";
 import { Layout } from "./components/Layout";
 import { RequireAuth } from "./components/RequireAuth";
 import { AuthPage } from "./pages/Auth";
+import { CommandsPage } from "./pages/Commands";
 import { HomePage } from "./pages/Home";
 import { LeaderboardPage } from "./pages/Leaderboard";
 import { MissionPlayPage } from "./pages/MissionPlay";
@@ -36,6 +37,7 @@ export function App() {
           }
         />
         <Route path="lab" element={<SandboxPage />} />
+        <Route path="commandes" element={<CommandsPage />} />
         <Route path="*" element={<p className="p-6 text-slate-400">Page introuvable.</p>} />
       </Route>
     </Routes>

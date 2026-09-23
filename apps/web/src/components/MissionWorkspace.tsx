@@ -1,7 +1,8 @@
-import { Lab, isIosKind, type LineDiscipline } from "@cpt/cli-engine";
+import { Lab, isIosKind, type CliMode, type LineDiscipline } from "@cpt/cli-engine";
 import type { CommandEntry, MissionObjective, Topology } from "@cpt/shared";
 import { useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import { CliTerminal } from "./CliTerminal";
+import { ModeDiagram } from "./ModeDiagram";
 import { ObjectiveList } from "./ObjectiveList";
 import { TopologyMap } from "./TopologyMap";
 import { Panel } from "./ui";
@@ -17,6 +18,8 @@ interface Props {
   replay?: CommandEntry[];
   /** Extra panels shown above the objectives. */
   aside?: ReactNode;
+  /** Show the CLI mode state machine of the selected console. */
+  showModes?: boolean;
 }
 
 /**
@@ -24,7 +27,7 @@ interface Props {
  * and the objective checklist. The local Lab gives instant feedback; the
  * server replays the same commands to decide the objectives.
  */
-export function MissionWorkspace({ topology, objectives, results, onCommand, locked, replay, aside }: Props) {
+export function MissionWorkspace({ topology, objectives, results, onCommand, locked, replay, aside, showModes }: Props) {
   const lab = useMemo(() => {
     const l = new Lab(topology);
     for (const c of replay ?? []) l.execute(c.deviceId, c.line);
@@ -89,14 +92,24 @@ export function MissionWorkspace({ topology, objectives, results, onCommand, loc
 
       <aside className="flex w-full shrink-0 flex-col gap-4 xl:w-96">
         {aside}
-        <Panel title="Objectifs" hint={results ? `${results.filter(Boolean).length}/${objectives.length}` : undefined}>
-          <ObjectiveList objectives={objectives} results={results} />
-        </Panel>
+        {objectives.length > 0 && (
+          <Panel title="Objectifs" hint={results ? `${results.filter(Boolean).length}/${objectives.length}` : undefined}>
+            <ObjectiveList objectives={objectives} results={results} />
+          </Panel>
+        )}
         <Panel title="Topologie" hint="clic = ouvrir la console">
           <div className="h-56">
             <TopologyMap lab={lab} selected={selected} onSelect={setSelected} />
           </div>
         </Panel>
+        {showModes && selected && (
+          <Panel title="Mode CLI" hint={lab.device(selected)?.hostname}>
+            <ModeDiagram
+              current={lab.session(selected).mode as CliMode}
+              hasVlans={lab.nodes.get(selected)!.kind !== "router"}
+            />
+          </Panel>
+        )}
       </aside>
     </div>
   );

@@ -37,6 +37,7 @@ export type Assertion = AssertionBase &
     | {
         type: "interface";
         device: string;
+        /** One interface ("Gi0/1") or a range ("Fa0/4-24"): all must match. */
         interface: string;
         status?: "up" | "down" | "administratively down";
         ipv4?: string; // "10.0.1.1/24"
@@ -49,6 +50,42 @@ export type Assertion = AssertionBase &
         name?: string;
         /** Exact set of access ports in this VLAN (short or full names). */
         accessPorts?: string[];
+      }
+    | {
+        type: "trunk";
+        device: string;
+        interface: string;
+        /** Operationally trunking (default true). */
+        trunking?: boolean;
+        nativeVlan?: number;
+        /** Exact allowed list; omit to ignore. */
+        allowedVlans?: number[];
+      }
+    | {
+        type: "stp-root";
+        device: string;
+        vlan: number;
+      }
+    | {
+        type: "etherchannel";
+        device: string;
+        group: number;
+        protocol?: "lacp" | "pagp" | "on";
+        /** Minimum number of bundled member ports (default 2). */
+        minMembers?: number;
+      }
+    | {
+        /**
+         * A regex matched against the running-config lines. With `section`,
+         * only lines of the block whose header matches it are searched.
+         */
+        type: "running-config";
+        device: string;
+        pattern: string;
+        section?: string;
+        /** With `section`: the pattern must appear in every matching block. */
+        every?: boolean;
+        absent?: boolean;
       }
     | {
         type: "mac-entry";
