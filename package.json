@@ -1,0 +1,20 @@
+{
+  "name": "cpt-multi",
+  "private": true,
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
+    "db:generate": "pnpm --filter @cpt/db generate",
+    "db:migrate": "pnpm --filter @cpt/db migrate:dev"
+  },
+  "devDependencies": {
+    "turbo": "^2.11.3",
+    "typescript": "~5.9.3"
+  }
+}

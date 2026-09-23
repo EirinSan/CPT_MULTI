@@ -1,0 +1,25 @@
+{
+  "name": "@cpt/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "generate": "prisma generate",
+    "migrate:dev": "prisma migrate dev",
+    "validate": "prisma validate",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.10.0",
+    "@prisma/client": "^7.10.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.4",
+    "dotenv": "^17.0.0",
+    "prisma": "^7.10.0",
+    "typescript": "~5.9.3"
+  }
+}

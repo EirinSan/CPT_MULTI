@@ -1,0 +1,25 @@
+@import "tailwindcss";
+@import "@xterm/xterm/css/xterm.css";
+
+@theme {
+  --font-mono: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --color-lab-bg: #0b0f14;
+  --color-lab-panel: #111821;
+  --color-lab-border: #1f2a37;
+  --color-lab-accent: #22d3ee;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--color-lab-bg);
+  color: #d6dee8;
+}
+
+.xterm .xterm-viewport {
+  background-color: transparent !important;
+}
