@@ -1,0 +1,266 @@
+// Prisma schema for the competitive network simulation platform.
+// Topology / assertion JSON shapes are typed in @cpt/shared.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum RankTier {
+  BRONZE
+  SILVER
+  GOLD
+  PLATINUM
+  DIAMOND
+  MASTER
+  CCIE
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+  EXPERT
+}
+
+enum ChallengeCategory {
+  SWITCHING
+  ROUTING
+  SECURITY
+  SERVICES
+  TROUBLESHOOTING
+}
+
+enum GameMode {
+  RANKED_1V1
+  SPEEDRUN
+  CTF
+  CASUAL
+}
+
+enum MatchStatus {
+  PENDING // lobby created, waiting for players to be ready
+  IN_PROGRESS
+  COMPLETED
+  ABORTED // a player left / disconnected before completion
+}
+
+enum MatchResult {
+  WIN
+  LOSS
+  DRAW
+  DNF // did not finish (timeout or forfeit)
+}
+
+enum LeaderboardScope {
+  GLOBAL
+  SEASON
+  WEEKLY
+  CHALLENGE // best times on one challenge (speedrun)
+}
+
+// ---------------------------------------------------------------------------
+// Users
+// ---------------------------------------------------------------------------
+
+model User {
+  id        String   @id @default(cuid())
+  username  String   @unique
+  email     String?  @unique
+  discordId String?  @unique
+  avatarUrl String?
+
+  // Rating. `elo` is the displayed rating; deviation/volatility are kept so
+  // we can move to Glicko-2 without a migration.
+  elo              Int      @default(1000)
+  peakElo          Int      @default(1000)
+  ratingDeviation  Float    @default(350)
+  ratingVolatility Float    @default(0.06)
+  rankTier         RankTier @default(BRONZE)
+
+  stats UserStats?
+
+  participations     MatchParticipant[]
+  wonMatches         Match[]            @relation("MatchWinner")
+  authoredChallenges Challenge[]        @relation("ChallengeAuthor")
+  leaderboardEntries LeaderboardEntry[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([elo])
+}
+
+model UserStats {
+  userId String @id
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  matchesPlayed    Int  @default(0)
+  wins             Int  @default(0)
+  losses           Int  @default(0)
+  draws            Int  @default(0)
+  currentStreak    Int  @default(0)
+  bestStreak       Int  @default(0)
+  challengesSolved Int  @default(0)
+  totalPlayTimeSec Int  @default(0)
+  fastestSolveMs   Int?
+  commandsTyped    Int  @default(0)
+  syntaxErrors     Int  @default(0)
+
+  updatedAt DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Challenges
+// ---------------------------------------------------------------------------
+
+model Challenge {
+  id          String            @id @default(cuid())
+  slug        String            @unique
+  title       String
+  description String
+  difficulty  Difficulty
+  category    ChallengeCategory
+  modes       GameMode[]
+  tags        String[]
+
+  /// `Topology` from @cpt/shared: devices, links, startup configs.
+  initialTopology       Json
+  /// `AssertionSet` from @cpt/shared: declarative target state.
+  targetStateAssertions Json
+
+  /// Seconds allowed to solve the challenge.
+  timeLimit Int
+  /// Reference solve time used for speedrun scoring.
+  parTimeSec Int?
+
+  /// Bumped when topology/assertions change so old results stay comparable.
+  version     Int     @default(1)
+  isPublished Boolean @default(false)
+
+  /// Daily/weekly CTF availability window.
+  availableFrom  DateTime?
+  availableUntil DateTime?
+
+  authorId String?
+  author   User?   @relation("ChallengeAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  matches      Match[]
+  leaderboards Leaderboard[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isPublished, difficulty])
+}
+
+// ---------------------------------------------------------------------------
+// Matches
+// ---------------------------------------------------------------------------
+
+model Match {
+  id     String      @id @default(cuid())
+  mode   GameMode
+  status MatchStatus @default(PENDING)
+  ranked Boolean     @default(true)
+
+  challengeId      String
+  challenge        Challenge @relation(fields: [challengeId], references: [id])
+  challengeVersion Int
+
+  players MatchParticipant[]
+
+  winnerId String?
+  winner   User?   @relation("MatchWinner", fields: [winnerId], references: [id], onDelete: SetNull)
+
+  startAt DateTime?
+  endedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([status])
+  @@index([challengeId])
+}
+
+model MatchParticipant {
+  id String @id @default(cuid())
+
+  matchId String
+  match   Match  @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  userId  String
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  result MatchResult?
+
+  eloBefore Int
+  eloAfter  Int?
+  eloDelta  Int?
+
+  /// Time from match start to all assertions passing (null if unsolved).
+  completionTimeMs Int?
+  penaltyMs        Int  @default(0)
+  commandCount     Int  @default(0)
+  syntaxErrorCount Int  @default(0)
+
+  /// Snapshot of the player's running-configs at the end, for replays/review.
+  finalState Json?
+
+  joinedAt DateTime @default(now())
+
+  @@unique([matchId, userId])
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Leaderboards (materialised; rebuilt by a job after each rated match)
+// ---------------------------------------------------------------------------
+
+model Leaderboard {
+  id    String           @id @default(cuid())
+  /// Stable lookup key, e.g. "RANKED_1V1:GLOBAL", "RANKED_1V1:SEASON:2026-S3",
+  /// "SPEEDRUN:CHALLENGE:ospf-multi-area".
+  key   String           @unique
+  mode  GameMode
+  scope LeaderboardScope
+
+  season      String?
+  challengeId String?
+  challenge   Challenge? @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+
+  startsAt DateTime?
+  endsAt   DateTime?
+
+  entries LeaderboardEntry[]
+
+  updatedAt DateTime @updatedAt
+}
+
+model LeaderboardEntry {
+  id String @id @default(cuid())
+
+  leaderboardId String
+  leaderboard   Leaderboard @relation(fields: [leaderboardId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  rank  Int
+  /// ELO for rating boards, points for CTF boards.
+  score Int
+  /// Best solve time for CHALLENGE boards.
+  bestTimeMs Int?
+  wins       Int  @default(0)
+  losses     Int  @default(0)
+
+  updatedAt DateTime @updatedAt
+
+  @@unique([leaderboardId, userId])
+  @@index([leaderboardId, rank])
+}
