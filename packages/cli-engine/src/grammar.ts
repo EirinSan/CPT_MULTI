@@ -5,14 +5,24 @@
  * completion so they can never disagree.
  */
 import type { CliMode } from "./types";
-import { isIpv4, isMask } from "./net";
+import { isIpv4, isMask, parseMac, parseVlanList } from "./net";
 import { parseInterfaceName } from "./device";
 import type { CommandContext } from "./session";
 
 export type Args = Record<string, string>;
 export type Handler = (ctx: CommandContext, args: Args) => void;
 
-export type ParamKind = "word" | "line" | "ipv4" | "mask" | "number" | "if-number" | "if-name";
+export type ParamKind =
+  | "word"
+  | "line"
+  | "ipv4"
+  | "mask"
+  | "number"
+  | "if-number"
+  | "if-name"
+  | "mac"
+  | "vlan-list"
+  | "pattern";
 
 export interface ParamSpec {
   kind: ParamKind;
@@ -23,6 +33,8 @@ export interface ParamSpec {
   max?: number;
   /** Hidden params are accepted but never listed by `?` (e.g. "g0/1" shorthand). */
   hidden?: boolean;
+  /** For kind "pattern". */
+  re?: RegExp;
 }
 
 export type TokenSpec =
@@ -48,7 +60,14 @@ export const P = {
     max,
   }),
   ifNumber: (label: string, help: string): ParamSpec => ({ kind: "if-number", label, help }),
-  ifName: (): ParamSpec => ({ kind: "if-name", label: "IFNAME", help: "Interface name", hidden: true }),
+  ifName: (hidden = true): ParamSpec => ({ kind: "if-name", label: "IFNAME", help: "Interface name", hidden }),
+  mac: (help = "48 bit mac address"): ParamSpec => ({ kind: "mac", label: "H.H.H", help }),
+  vlanList: (help = "VLAN IDs of the allowed VLANs when this port is in trunking mode"): ParamSpec => ({
+    kind: "vlan-list",
+    label: "WORD",
+    help,
+  }),
+  pattern: (re: RegExp, label: string, help: string): ParamSpec => ({ kind: "pattern", label, help, re }),
 };
 
 function paramAccepts(spec: ParamSpec, text: string): boolean {
@@ -69,6 +88,12 @@ function paramAccepts(spec: ParamSpec, text: string): boolean {
       return /^\d+(\/\d+)*$/.test(text);
     case "if-name":
       return parseInterfaceName(text) !== null;
+    case "mac":
+      return parseMac(text) !== null;
+    case "vlan-list":
+      return parseVlanList(text) !== null;
+    case "pattern":
+      return spec.re!.test(text);
   }
 }
 

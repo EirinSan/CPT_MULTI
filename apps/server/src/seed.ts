@@ -5,13 +5,22 @@ import "./config";
 
 const prisma = createPrismaClient();
 
+/** JSON with sorted keys: jsonb does not preserve key order. */
+function canonical(value: unknown): string {
+  return JSON.stringify(value, (_k, v: unknown) =>
+    v && typeof v === "object" && !Array.isArray(v)
+      ? Object.fromEntries(Object.entries(v as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b)))
+      : v,
+  );
+}
+
 for (const m of MISSIONS) {
   const content = { initialTopology: m.topology as object, targetStateAssertions: m.assertions as object };
   const existing = await prisma.challenge.findUnique({ where: { slug: m.slug } });
   const changed =
     existing &&
-    (JSON.stringify(existing.initialTopology) !== JSON.stringify(m.topology) ||
-      JSON.stringify(existing.targetStateAssertions) !== JSON.stringify(m.assertions));
+    (canonical(existing.initialTopology) !== canonical(m.topology) ||
+      canonical(existing.targetStateAssertions) !== canonical(m.assertions));
   const data = {
     title: m.title,
     summary: m.summary,

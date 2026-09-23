@@ -54,10 +54,11 @@ privée) avec deux comptes différents et lance la recherche dans les deux.
 |---|---|
 | **Accueil** | Rang actuel, progression vers le rang suivant, prochaine mission à faire |
 | **Ranked 1v1** | File de matchmaking (l'écart d'ELO accepté s'élargit avec l'attente) → même mission pour les deux joueurs → progression de l'adversaire en direct → résultat et variation d'ELO |
-| **Missions** | 6 scénarios (switching, routage, inter-VLAN, dépannage) : briefing, chrono, objectifs cochés en direct, record personnel, top 10 |
+| **Missions** | 11 scénarios (VLAN, trunk, routage, inter-VLAN, sécurisation SSH, port-security, STP, EtherChannel, dépannage) : briefing, chrono, objectifs cochés en direct, record personnel, top 10 |
 | **Classement** | Top ELO ranked et meilleurs temps par mission |
 | **Profil** | ELO, record d'ELO, stats (V/D/N, séries, missions réussies), historique des parties |
-| **Lab libre** | Switch L2, switch L3 et routeur sans objectif |
+| **Lab libre** | Topologie complète (routeur, switch L3, deux switches en boucle, postes) sans objectif |
+| **Commandes** | Référence de toutes les commandes simulées, avec recherche |
 
 **Validation côté serveur** : les objectifs visibles ne sont que des libellés.
 Les assertions exactes restent sur le serveur, qui rejoue chaque commande sur
@@ -69,27 +70,37 @@ Diamond (1650) → Master (1850) → CCIE (2100), en divisions III/II/I jusqu'à
 Diamond. Nouveau compte : 1000 ELO, Bronze II. K = 40 pendant les 20 premiers
 matchs, puis 24 (16 à partir de Master).
 
-## Prototype CLI
+## CLI Cisco IOS simulée
 
-Trois équipements sont disponibles (switch L2, switch L3, routeur). Ce qui
-est implémenté :
+La page **Commandes** du site liste toutes les commandes reconnues, générées
+depuis la grammaire du simulateur (≈ 370 sur un switch L2, 380 sur un L3,
+190 sur un routeur). Abréviations (`sh run`, `conf t`, `int g0/1`), `?`,
+Tab, historique, `do`, `| include / exclude / begin / section / count`.
 
-- **Modes** : `>` User EXEC, `#` Privileged EXEC, `(config)#`, `(config-if)#`,
-  `(config-vlan)#`, avec `enable`, `disable`, `configure terminal`, `exit`,
-  `end`, `Ctrl+Z`, et `do <cmd>` depuis les modes config. Une commande globale
-  tapée en sous-mode (ex. `hostname` dans `config-if`) repasse en `(config)#`,
-  comme sur IOS.
-- **Parsing IOS** : abréviations non ambiguës (`conf t`, `sh ip int br`,
-  `int g0/1`), erreurs `% Invalid input detected at '^' marker.` avec le
-  caret sous le mot fautif, `% Ambiguous command`, `% Incomplete command.`
-- **Aide & édition** : `?` contextuel (liste complète ou mots commençant par…),
-  `Tab` pour compléter, historique ↑/↓, Ctrl+A/E/U/C.
-- **Commandes** : `hostname`, `interface`, `ip address` (contrôle des adresses
-  réseau et des chevauchements), `shutdown`/`no shutdown`, `description`,
-  `vlan`/`name`, `switchport mode|access vlan`, `no switchport` (L3),
-  `ip route`, `write memory`, `show ip interface brief`, `show vlan brief`,
-  `show ip route`, `show mac address-table`, `show running-config`,
-  `show startup-config`, `show version`, `show history`.
-- **Syslog** : `%LINK-3-UPDOWN` / `%LINEPROTO-5-UPDOWN` quand un port change
-  d'état. Le panneau « Ports physiques » simule le branchement d'un câble
-  (en attendant le canvas de topologie).
+| Domaine | Commandes principales |
+|---|---|
+| Modes | `enable` (avec mot de passe), `disable`, `configure terminal`, `interface`, `interface range fa0/1 - 12`, `vlan`, `line console 0`, `line vty 0 15`, `exit`, `end`, Ctrl+Z |
+| Fichiers | `write memory`, `copy running-config startup-config` (et l'inverse), `erase startup-config`, `reload`, `delete flash:vlan.dat`, `dir flash:` |
+| Sécurité d'accès | `enable secret/password`, `service password-encryption` (type 7), `username … privilege 15 secret`, `password` / `login` / `login local`, `transport input ssh`, `exec-timeout`, `banner motd`, `ip domain-name`, `crypto key generate rsa`, `ip ssh version 2` |
+| VLAN / trunk | `vlan`, `name`, `switchport mode access/trunk/dynamic auto/dynamic desirable`, `switchport access vlan`, `switchport voice vlan`, `switchport trunk native vlan`, `switchport trunk allowed vlan add/remove/except`, `switchport nonegotiate`, `switchport trunk encapsulation` (L3) |
+| VTP | `vtp mode server/client/transparent/off`, `vtp domain`, `vtp password`, `vtp version` |
+| Spanning tree | `spanning-tree mode pvst/rapid-pvst/mst`, `spanning-tree vlan … priority / root primary/secondary`, `portfast` (port et `default`), `bpduguard`, `cost`, `port-priority` |
+| Sécurité L2 | `switchport port-security` (maximum, violation, mac-address sticky/statique, aging), `ip dhcp snooping`, `ip arp inspection`, `errdisable recovery` |
+| EtherChannel | `channel-group N mode active/passive/on/desirable/auto`, `interface port-channel` |
+| IP | `ip address`, `ip default-gateway`, `ip routing`, `ip route`, `ip helper-address`, `no switchport` (L3) |
+| Divers | `hostname`, `description`, `speed`, `duplex`, `cdp run/enable`, `lldp run`, `mac address-table static/aging-time`, `ntp server`, `logging host`, `clock set`, `terminal length`, `clear mac address-table/port-security/counters` |
+| show | `running-config [interface]`, `startup-config`, `version`, `interfaces [status/trunk/switchport/description]`, `ip interface brief`, `vlan [brief/id]`, `mac address-table […]`, `spanning-tree [vlan/summary]`, `port-security [interface/address]`, `etherchannel summary`, `vtp status`, `cdp neighbors [detail]`, `ip route`, `ip ssh`, `arp`, `clock`, `flash:`, `users`, `logging`, `history`… |
+
+**Ce que le lab calcule vraiment** après chaque commande (`packages/cli-engine/src/l2.ts`) :
+état des câbles, négociation DTP, bundling EtherChannel (LACP/PAgP/on),
+synchronisation VTP (y compris le piège de la révision plus haute),
+élection spanning-tree par VLAN (rôles Root/Desg/Altn, ports bloqués),
+BPDU guard et port-security (passage en err-disabled avec les messages
+syslog IOS), apprentissage des adresses MAC le long de l'arbre STP, voisins
+CDP et détection de VLAN natif différent.
+
+**Limites** : pas encore de moteur de paquets. `ping`, `traceroute`,
+`telnet` et `ssh` répondent qu'ils ne sont pas simulés, les compteurs de
+trafic restent à 0, et les protocoles sont résolus « à convergence » (pas de
+timers ni d'états listening/learning). Les postes sont supposés émettre du
+trafic dès que leur lien est up, ce qui fait apprendre leur MAC.

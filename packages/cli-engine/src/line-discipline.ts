@@ -98,6 +98,10 @@ export class LineDiscipline {
   }
 
   private key(ch: string): void {
+    // While answering a question (password, [confirm]...), `?` and Tab are
+    // ordinary characters and passwords are not echoed.
+    const answering = this.session.pending !== null;
+    if (answering && (ch === "?" || ch === "\t")) return this.insert(ch);
     switch (ch) {
       case "\r":
       case "\n":
@@ -130,9 +134,14 @@ export class LineDiscipline {
         return this.redraw();
       case "\x03": // Ctrl+C
         this.opts.write("^C");
+        this.session.pending = null;
         return this.newLine();
       case "\x1a": // Ctrl+Z
         this.opts.write("^Z");
+        if (answering) {
+          this.session.pending = null;
+          return this.newLine();
+        }
         if (this.session.mode !== "user" && this.session.mode !== "privileged") {
           this.buffer = "end";
           return this.enter();
@@ -140,8 +149,17 @@ export class LineDiscipline {
         return this.newLine();
     }
     if (ch < " ") return; // ignore other control characters
+    this.insert(ch);
+  }
+
+  private get secret(): boolean {
+    return this.session.pending?.secret ?? false;
+  }
+
+  private insert(ch: string): void {
     this.buffer = this.buffer.slice(0, this.cursor) + ch + this.buffer.slice(this.cursor);
     this.cursor++;
+    if (this.secret) return;
     if (this.cursor === this.buffer.length) this.opts.write(ch);
     else this.redraw();
   }
@@ -185,6 +203,7 @@ export class LineDiscipline {
   }
 
   private historyPrev(): void {
+    if (this.session.pending) return;
     const h = this.session.history;
     if (h.length === 0) return;
     if (this.historyIndex === null) {
@@ -219,8 +238,8 @@ export class LineDiscipline {
 
   /** Repaint prompt + buffer. Assumes the line fits the terminal width. */
   private redraw(): void {
-    this.opts.write(`\r\x1b[K${this.session.prompt}${this.buffer}`);
-    this.moveCursorFromEnd();
+    this.opts.write(`\r\x1b[K${this.session.prompt}${this.secret ? "" : this.buffer}`);
+    if (!this.secret) this.moveCursorFromEnd();
   }
 
   private moveCursorFromEnd(): void {

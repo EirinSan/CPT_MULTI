@@ -18,6 +18,9 @@ function link(a: string, ai: string, b: string, bi: string, cable: Topology["lin
 
 const PRIV = ["enable", "configure terminal"];
 
+/** Trunks toward the other switches + VLANs 10 and 20 (STP mission). */
+const trunkStartup = ["vlan 10", "vlan 20", "interface range g0/1 - 2", "switchport mode trunk"];
+
 export const MISSIONS: MissionDefinition[] = [
   {
     slug: "premiers-pas",
@@ -335,6 +338,261 @@ export const MISSIONS: MissionDefinition[] = [
         "end",
       ],
       SW1: [...PRIV, "interface fa0/5", "switchport access vlan 30", "end"],
+    },
+  },
+  {
+    slug: "trunk-inter-switch",
+    title: "Trunk entre deux switches",
+    summary: "VLANs sur deux switches reliés par un trunk 802.1Q propre.",
+    briefing:
+      "Les VLANs 10 ADMIN et 20 PROD doivent exister sur SW1 et SW2, avec Fa0/1 en VLAN 10 et Fa0/2 en VLAN 20 sur chaque switch (mode access). Le lien Gi0/1 entre les deux doit devenir un trunk forcé (pas de DTP dynamique), avec le VLAN natif 99 (NATIVE) et seulement les VLANs 10, 20 et 99 autorisés.",
+    difficulty: "MEDIUM",
+    category: "SWITCHING",
+    modes: ["SPEEDRUN", "RANKED_1V1"],
+    tags: ["trunk", "native vlan", "allowed vlan"],
+    timeLimit: 900,
+    parTimeSec: 240,
+    topology: {
+      version: 1,
+      devices: [
+        { id: "SW1", kind: "switch-l2", hostname: "SW1", position: at(140, 120) },
+        { id: "SW2", kind: "switch-l2", hostname: "SW2", position: at(400, 120) },
+        pc("PC1", 60, 300),
+        pc("PC2", 200, 300),
+        pc("PC3", 340, 300),
+        pc("PC4", 480, 300),
+      ],
+      links: [
+        link("SW1", "GigabitEthernet0/1", "SW2", "GigabitEthernet0/1", "copper-crossover"),
+        link("SW1", "FastEthernet0/1", "PC1", "eth0"),
+        link("SW1", "FastEthernet0/2", "PC2", "eth0"),
+        link("SW2", "FastEthernet0/1", "PC3", "eth0"),
+        link("SW2", "FastEthernet0/2", "PC4", "eth0"),
+      ],
+    },
+    assertions: {
+      all: [
+        { label: "SW1 : Fa0/1 dans le VLAN 10 ADMIN", type: "vlan", device: "SW1", vlanId: 10, name: "ADMIN", accessPorts: ["Fa0/1"] },
+        { label: "SW1 : Fa0/2 dans le VLAN 20 PROD", type: "vlan", device: "SW1", vlanId: 20, name: "PROD", accessPorts: ["Fa0/2"] },
+        { label: "SW2 : Fa0/1 dans le VLAN 10 ADMIN", type: "vlan", device: "SW2", vlanId: 10, name: "ADMIN", accessPorts: ["Fa0/1"] },
+        { label: "SW2 : Fa0/2 dans le VLAN 20 PROD", type: "vlan", device: "SW2", vlanId: 20, name: "PROD", accessPorts: ["Fa0/2"] },
+        { label: "SW1 Gi0/1 : trunk, natif 99, VLANs 10,20,99", type: "trunk", device: "SW1", interface: "Gi0/1", nativeVlan: 99, allowedVlans: [10, 20, 99] },
+        { label: "SW2 Gi0/1 : trunk, natif 99, VLANs 10,20,99", type: "trunk", device: "SW2", interface: "Gi0/1", nativeVlan: 99, allowedVlans: [10, 20, 99] },
+        { label: "Trunk forcé (mode trunk) des deux côtés", type: "running-config", device: "SW1", section: "^interface GigabitEthernet0/1$", pattern: "^ switchport mode trunk$" },
+      ],
+    },
+    solution: Object.fromEntries(
+      ["SW1", "SW2"].map((id) => [
+        id,
+        [
+          ...PRIV,
+          "vlan 10",
+          "name ADMIN",
+          "vlan 20",
+          "name PROD",
+          "vlan 99",
+          "name NATIVE",
+          "interface fa0/1",
+          "switchport mode access",
+          "switchport access vlan 10",
+          "interface fa0/2",
+          "switchport mode access",
+          "switchport access vlan 20",
+          "interface g0/1",
+          "switchport mode trunk",
+          "switchport trunk native vlan 99",
+          "switchport trunk allowed vlan 10,20,99",
+          "end",
+        ],
+      ]),
+    ),
+  },
+  {
+    slug: "securiser-switch",
+    title: "Sécuriser l'accès au switch",
+    summary: "Mots de passe, SSH v2, comptes locaux : le durcissement de base.",
+    briefing:
+      "Un switch neuf arrive avec la configuration d'usine. Nomme-le SW-SEC, protège le mode privilégié par un enable secret, protège la console par un mot de passe, crée le compte admin (privilège 15, secret) et n'autorise l'administration à distance qu'en SSH v2 avec les comptes locaux, sur toutes les lignes VTY. Chiffre les mots de passe en clair et ajoute une bannière MOTD. Domaine : lab.local.",
+    difficulty: "MEDIUM",
+    category: "SECURITY",
+    modes: ["SPEEDRUN", "RANKED_1V1"],
+    tags: ["enable secret", "ssh", "vty", "service password-encryption"],
+    timeLimit: 900,
+    parTimeSec: 210,
+    topology: {
+      version: 1,
+      devices: [
+        { id: "SW1", kind: "switch-l2", hostname: "Switch", position: at(260, 120) },
+        pc("ADMIN-PC", 260, 300),
+      ],
+      links: [link("SW1", "FastEthernet0/1", "ADMIN-PC", "eth0")],
+    },
+    assertions: {
+      all: [
+        { label: "Le switch s'appelle SW-SEC", type: "hostname", device: "SW1", value: "SW-SEC" },
+        { label: "Enable secret configuré", type: "running-config", device: "SW1", pattern: "^enable secret " },
+        { label: "Console protégée par mot de passe", type: "running-config", device: "SW1", section: "^line con 0$", pattern: "^ login$" },
+        { label: "Compte admin (privilège 15, secret)", type: "running-config", device: "SW1", pattern: "^username admin privilege 15 secret " },
+        { label: "SSH version 2 activé", type: "running-config", device: "SW1", pattern: "^ip ssh version 2$" },
+        { label: "Toutes les VTY : SSH uniquement", type: "running-config", device: "SW1", section: "^line vty", pattern: "^ transport input ssh$", every: true },
+        { label: "Toutes les VTY : login local", type: "running-config", device: "SW1", section: "^line vty", pattern: "^ login local$", every: true },
+        { label: "Mots de passe chiffrés", type: "running-config", device: "SW1", pattern: "^service password-encryption$" },
+        { label: "Bannière MOTD présente", type: "running-config", device: "SW1", pattern: "^banner motd" },
+      ],
+    },
+    solution: {
+      SW1: [
+        ...PRIV,
+        "hostname SW-SEC",
+        "enable secret Cl4ss3!",
+        "line console 0",
+        "password c0ns0le",
+        "login",
+        "exit",
+        "username admin privilege 15 secret Adm1n!",
+        "ip domain-name lab.local",
+        "crypto key generate rsa general-keys modulus 1024",
+        "ip ssh version 2",
+        "line vty 0 15",
+        "transport input ssh",
+        "login local",
+        "exit",
+        "service password-encryption",
+        "banner motd #Acces reserve au personnel autorise#",
+        "end",
+      ],
+    },
+  },
+  {
+    slug: "port-security",
+    title: "Port-security et ports inutilisés",
+    summary: "Verrouiller les ports utilisateurs, éteindre le reste.",
+    briefing:
+      "Trois postes sont branchés sur Fa0/1 à Fa0/3. Sur ces ports : mode access, port-security avec apprentissage sticky de l'adresse MAC du poste, et violation en mode restrict. Tous les ports inutilisés Fa0/4 à Fa0/24 doivent être désactivés.",
+    difficulty: "MEDIUM",
+    category: "SECURITY",
+    modes: ["SPEEDRUN", "RANKED_1V1"],
+    tags: ["port-security", "sticky", "hardening"],
+    timeLimit: 600,
+    parTimeSec: 120,
+    topology: {
+      version: 1,
+      devices: [
+        { id: "SW1", kind: "switch-l2", hostname: "SW1", position: at(260, 110) },
+        pc("PC1", 120, 300),
+        pc("PC2", 260, 300),
+        pc("PC3", 400, 300),
+      ],
+      links: [
+        link("SW1", "FastEthernet0/1", "PC1", "eth0"),
+        link("SW1", "FastEthernet0/2", "PC2", "eth0"),
+        link("SW1", "FastEthernet0/3", "PC3", "eth0"),
+      ],
+    },
+    assertions: {
+      all: [
+        { label: "Fa0/1-3 : port-security activé", type: "running-config", device: "SW1", section: "^interface FastEthernet0/[1-3]$", pattern: "^ switchport port-security$", every: true },
+        { label: "Fa0/1-3 : MAC du poste apprise en sticky", type: "running-config", device: "SW1", section: "^interface FastEthernet0/[1-3]$", pattern: "^ switchport port-security mac-address sticky [0-9a-f.]+$", every: true },
+        { label: "Fa0/1-3 : violation en restrict", type: "running-config", device: "SW1", section: "^interface FastEthernet0/[1-3]$", pattern: "^ switchport port-security violation restrict$", every: true },
+        { label: "Fa0/4 à Fa0/24 désactivés", type: "interface", device: "SW1", interface: "Fa0/4-24", status: "administratively down" },
+      ],
+    },
+    solution: {
+      SW1: [
+        ...PRIV,
+        "interface range fa0/1 - 3",
+        "switchport mode access",
+        "switchport port-security",
+        "switchport port-security mac-address sticky",
+        "switchport port-security violation restrict",
+        "interface range fa0/4 - 24",
+        "shutdown",
+        "end",
+      ],
+    },
+  },
+  {
+    slug: "racine-stp",
+    title: "Maîtriser le spanning-tree",
+    summary: "Choisir la racine, passer en Rapid-PVST, protéger les ports d'accès.",
+    briefing:
+      "Trois switches forment une boucle (trunks déjà en place). DSW1 doit être le pont racine des VLANs 1, 10 et 20, et ASW1 la racine de secours. Passe les trois switches en rapid-pvst. Sur les ports des postes (ASW1 Fa0/1 et ASW2 Fa0/1), active portfast et BPDU guard.",
+    difficulty: "HARD",
+    category: "SWITCHING",
+    modes: ["SPEEDRUN", "RANKED_1V1"],
+    tags: ["stp", "root bridge", "rapid-pvst", "bpduguard"],
+    timeLimit: 900,
+    parTimeSec: 240,
+    topology: {
+      version: 1,
+      devices: [
+        { id: "DSW1", kind: "switch-l2", hostname: "DSW1", position: at(260, 60), startupConfig: trunkStartup },
+        { id: "ASW1", kind: "switch-l2", hostname: "ASW1", position: at(120, 220), startupConfig: [...trunkStartup, "interface fa0/1", "switchport mode access", "switchport access vlan 10"] },
+        { id: "ASW2", kind: "switch-l2", hostname: "ASW2", position: at(400, 220), startupConfig: [...trunkStartup, "interface fa0/1", "switchport mode access", "switchport access vlan 20"] },
+        pc("PC10", 120, 340),
+        pc("PC20", 400, 340),
+      ],
+      links: [
+        link("DSW1", "GigabitEthernet0/1", "ASW1", "GigabitEthernet0/1", "copper-crossover"),
+        link("DSW1", "GigabitEthernet0/2", "ASW2", "GigabitEthernet0/1", "copper-crossover"),
+        link("ASW1", "GigabitEthernet0/2", "ASW2", "GigabitEthernet0/2", "copper-crossover"),
+        link("ASW1", "FastEthernet0/1", "PC10", "eth0"),
+        link("ASW2", "FastEthernet0/1", "PC20", "eth0"),
+      ],
+    },
+    assertions: {
+      all: [
+        { label: "DSW1 racine du VLAN 1", type: "stp-root", device: "DSW1", vlan: 1 },
+        { label: "DSW1 racine du VLAN 10", type: "stp-root", device: "DSW1", vlan: 10 },
+        { label: "DSW1 racine du VLAN 20", type: "stp-root", device: "DSW1", vlan: 20 },
+        { label: "ASW1 racine de secours (priorité 28672)", type: "running-config", device: "ASW1", pattern: "^spanning-tree vlan \\S+ priority 28672$" },
+        { label: "DSW1 en rapid-pvst", type: "running-config", device: "DSW1", pattern: "^spanning-tree mode rapid-pvst$" },
+        { label: "ASW1 en rapid-pvst", type: "running-config", device: "ASW1", pattern: "^spanning-tree mode rapid-pvst$" },
+        { label: "ASW2 en rapid-pvst", type: "running-config", device: "ASW2", pattern: "^spanning-tree mode rapid-pvst$" },
+        { label: "Postes : portfast + BPDU guard (ASW1)", type: "running-config", device: "ASW1", section: "^interface FastEthernet0/1$", pattern: "^ spanning-tree bpduguard enable$" },
+        { label: "Postes : portfast + BPDU guard (ASW2)", type: "running-config", device: "ASW2", section: "^interface FastEthernet0/1$", pattern: "^ spanning-tree bpduguard enable$" },
+      ],
+    },
+    solution: {
+      DSW1: [...PRIV, "spanning-tree mode rapid-pvst", "spanning-tree vlan 1,10,20 root primary", "end"],
+      ASW1: [...PRIV, "spanning-tree mode rapid-pvst", "spanning-tree vlan 1,10,20 root secondary", "interface fa0/1", "spanning-tree portfast", "spanning-tree bpduguard enable", "end"],
+      ASW2: [...PRIV, "spanning-tree mode rapid-pvst", "interface fa0/1", "spanning-tree portfast", "spanning-tree bpduguard enable", "end"],
+    },
+  },
+  {
+    slug: "etherchannel-lacp",
+    title: "EtherChannel LACP",
+    summary: "Agréger deux liens en un port-channel trunk.",
+    briefing:
+      "SW1 et SW2 sont reliés par deux câbles (Fa0/23 et Fa0/24) : aujourd'hui le spanning-tree en bloque un. Regroupe-les dans un EtherChannel LACP (groupe 1) et fais du Port-channel1 un trunk des deux côtés.",
+    difficulty: "HARD",
+    category: "SWITCHING",
+    modes: ["SPEEDRUN", "RANKED_1V1"],
+    tags: ["etherchannel", "lacp", "port-channel"],
+    timeLimit: 600,
+    parTimeSec: 150,
+    topology: {
+      version: 1,
+      devices: [
+        { id: "SW1", kind: "switch-l2", hostname: "SW1", position: at(140, 150) },
+        { id: "SW2", kind: "switch-l2", hostname: "SW2", position: at(400, 150) },
+      ],
+      links: [
+        link("SW1", "FastEthernet0/23", "SW2", "FastEthernet0/23", "copper-crossover"),
+        link("SW1", "FastEthernet0/24", "SW2", "FastEthernet0/24", "copper-crossover"),
+      ],
+    },
+    assertions: {
+      all: [
+        { label: "SW1 : Po1 LACP avec 2 liens", type: "etherchannel", device: "SW1", group: 1, protocol: "lacp", minMembers: 2 },
+        { label: "SW2 : Po1 LACP avec 2 liens", type: "etherchannel", device: "SW2", group: 1, protocol: "lacp", minMembers: 2 },
+        { label: "SW1 : Port-channel1 en trunk", type: "trunk", device: "SW1", interface: "Port-channel1" },
+        { label: "SW2 : Port-channel1 en trunk", type: "trunk", device: "SW2", interface: "Port-channel1" },
+      ],
+    },
+    solution: {
+      SW1: [...PRIV, "interface range fa0/23 - 24", "channel-group 1 mode active", "interface port-channel 1", "switchport mode trunk", "end"],
+      SW2: [...PRIV, "interface range fa0/23 - 24", "channel-group 1 mode passive", "interface port-channel 1", "switchport mode trunk", "end"],
     },
   },
 ];
